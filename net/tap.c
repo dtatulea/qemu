@@ -44,6 +44,8 @@
 
 #include "hw/vhost_net.h"
 
+#include <linux/if_tun.h>
+
 /* Maximum GSO packet size (64k) plus plenty of room for
  * the ethernet and virtio_net headers
  */
@@ -113,6 +115,31 @@ static ssize_t tap_write_packet(TAPState *s, const struct iovec *iov, int iovcnt
     }
 
     return len;
+}
+
+static int tap_set_receive_filter(VLANClientState *nc, unsigned int flags,
+                                  int count, uint8_t *list)
+{
+    TAPState *s = DO_UPCAST(TAPState, nc, nc);
+    struct tun_filter *filter;
+    int ret;
+
+    if (flags & IFF_PROMISC)
+        count = 0;
+
+    filter = qemu_mallocz(sizeof(*filter) + (count * ETH_ALEN));
+
+    memcpy(filter->addr, list, count * ETH_ALEN);
+    filter->count += count;
+
+    if (flags & IFF_ALLMULTI)
+        filter->flags |= TUN_FLT_ALLMULTI;
+  
+    ret = ioctl(s->fd, TUNSETTXFILTER, filter);
+
+    qemu_free(filter);
+
+    return ret;
 }
 
 static ssize_t tap_receive_iov(VLANClientState *nc, const struct iovec *iov,
@@ -333,6 +360,7 @@ static TAPState *net_tap_fd_init(VLANState *vlan,
 
     nc = qemu_new_net_client(&net_tap_info, vlan, NULL, model, name);
 
+    nc->info->set_receive_filter = tap_set_receive_filter;
     s = DO_UPCAST(TAPState, nc, nc);
 
     s->fd = fd;

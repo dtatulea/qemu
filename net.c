@@ -492,6 +492,24 @@ static ssize_t qemu_vlan_deliver_packet(VLANClientState *sender,
     return ret;
 }
 
+int vlan_set_hw_receive_filter(VLANState *vlan, int flags,
+                               int count, uint8_t *buf)
+{
+    VLANClientState *vc;
+
+    QTAILQ_FOREACH(vc, &vlan->clients, next) {
+        int ret;
+
+        if (!vc->info->set_receive_filter)
+            continue;
+
+        ret = vc->info->set_receive_filter(vc, flags, count, buf);
+        return (ret == count);
+    } 
+
+    return 0;
+}
+
 void qemu_purge_queued_packets(VLANClientState *vc)
 {
     NetQueue *queue;

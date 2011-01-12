@@ -42,6 +42,7 @@ typedef void (NetPoll)(VLANClientState *, bool enable);
 typedef int (NetCanReceive)(VLANClientState *);
 typedef ssize_t (NetReceive)(VLANClientState *, const uint8_t *, size_t);
 typedef ssize_t (NetReceiveIOV)(VLANClientState *, const struct iovec *, int);
+typedef int (NetSetReceiveFilter)(VLANClientState *, unsigned int, int, uint8_t *);
 typedef void (NetCleanup) (VLANClientState *);
 typedef void (LinkStatusChanged)(VLANClientState *);
 
@@ -52,6 +53,7 @@ typedef struct NetClientInfo {
     NetReceive *receive_raw;
     NetReceiveIOV *receive_iov;
     NetCanReceive *can_receive;
+    NetSetReceiveFilter *set_receive_filter;
     NetCleanup *cleanup;
     LinkStatusChanged *link_status_changed;
     NetPoll *poll;
@@ -99,6 +101,10 @@ NICState *qemu_new_nic(NetClientInfo *info,
 void qemu_del_vlan_client(VLANClientState *vc);
 VLANClientState *qemu_find_vlan_client_by_name(Monitor *mon, int vlan_id,
                                                const char *client_str);
+
+int vlan_set_hw_receive_filter(VLANState *vlan, int flags,
+                               int count, uint8_t *buf);
+
 typedef void (*qemu_nic_foreach)(NICState *nic, void *opaque);
 void qemu_foreach_nic(qemu_nic_foreach func, void *opaque);
 int qemu_can_send_packet(VLANClientState *vc);

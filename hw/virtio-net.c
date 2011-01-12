@@ -21,6 +21,8 @@
 #include "virtio-net.h"
 #include "vhost_net.h"
 
+#include <net/if.h>
+
 #define VIRTIO_NET_VM_VERSION    11
 
 #define MAC_TABLE_ENTRIES    64
@@ -49,6 +51,7 @@ typedef struct VirtIONet
     int mergeable_rx_bufs;
     uint8_t promisc;
     uint8_t allmulti;
+    uint8_t hw_mac_filter;
     uint8_t alluni;
     uint8_t nomulti;
     uint8_t nouni;
@@ -176,6 +179,28 @@ static void virtio_net_set_link_status(VLANClientState *nc)
     virtio_net_set_status(&n->vdev, n->vdev.status);
 }
 
+static void virtio_net_set_hw_rx_filter(VirtIONet *n)
+{
+    static const uint8_t bcast[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t *buf;
+    int flags = 0;
+
+    if (n->promisc)
+        flags |= IFF_PROMISC;
+    if (n->allmulti)
+        flags |= IFF_ALLMULTI;
+
+    buf = qemu_mallocz((n->mac_table.in_use + 2) * ETH_ALEN);
+
+    memcpy(&buf[ETH_ALEN*0], n->mac, ETH_ALEN);
+    memcpy(&buf[ETH_ALEN*1], bcast, ETH_ALEN);
+    memcpy(&buf[ETH_ALEN*2], n->mac_table.macs, n->mac_table.in_use * ETH_ALEN);
+
+    n->hw_mac_filter = vlan_set_hw_receive_filter(n->nic->nc.vlan, flags,
+                                                  n->mac_table.in_use + 2, buf);
+    qemu_free(buf);
+}
+
 static void virtio_net_reset(VirtIODevice *vdev)
 {
     VirtIONet *n = to_virtio_net(vdev);
@@ -194,6 +219,7 @@ static void virtio_net_reset(VirtIODevice *vdev)
     n->mac_table.multi_overflow = 0;
     n->mac_table.uni_overflow = 0;
     memset(n->mac_table.macs, 0, MAC_TABLE_ENTRIES * ETH_ALEN);
+    virtio_net_set_hw_rx_filter(n);
     memset(n->vlans, 0, MAX_VLAN >> 3);
 }
 
@@ -423,11 +449,13 @@ static void virtio_net_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
         ctrl.class = ldub_p(elem.out_sg[0].iov_base);
         ctrl.cmd = ldub_p(elem.out_sg[0].iov_base + sizeof(ctrl.class));
 
-        if (ctrl.class == VIRTIO_NET_CTRL_RX_MODE)
+        if (ctrl.class == VIRTIO_NET_CTRL_RX_MODE) {
             status = virtio_net_handle_rx_mode(n, ctrl.cmd, &elem);
-        else if (ctrl.class == VIRTIO_NET_CTRL_MAC)
+            virtio_net_set_hw_rx_filter(n);
+        } else if (ctrl.class == VIRTIO_NET_CTRL_MAC) {
             status = virtio_net_handle_mac(n, ctrl.cmd, &elem);
-        else if (ctrl.class == VIRTIO_NET_CTRL_VLAN)
+            virtio_net_set_hw_rx_filter(n);
+        } else if (ctrl.class == VIRTIO_NET_CTRL_VLAN)
             status = virtio_net_handle_vlan_table(n, ctrl.cmd, &elem);
 
         stb_p(elem.in_sg[elem.in_num - 1].iov_base, status);
@@ -545,6 +573,9 @@ static int receive_filter(VirtIONet *n, const uint8_t *buf, int size)
     int i;
 
     if (n->promisc)
+        return 1;
+
+    if (n->hw_mac_filter)
         return 1;
 
     if (n->has_vnet_hdr) {
@@ -969,6 +1000,9 @@ static int virtio_net_load(QEMUFile *f, void *opaque, int version_id)
         }
     }
     n->mac_table.first_multi = i;
+    
+    virtio_net_set_hw_rx_filter(n);
+
     return 0;
 }
 
