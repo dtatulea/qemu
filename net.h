@@ -102,6 +102,7 @@ void qemu_del_vlan_client(VLANClientState *vc);
 VLANClientState *qemu_find_vlan_client_by_name(Monitor *mon, int vlan_id,
                                                const char *client_str);
 
+int vlan_count_nics(VLANState *vlan);
 int vlan_set_hw_receive_filter(VLANState *vlan, int flags,
                                int count, uint8_t *buf);
 

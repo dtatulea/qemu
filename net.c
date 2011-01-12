@@ -492,6 +492,19 @@ static ssize_t qemu_vlan_deliver_packet(VLANClientState *sender,
     return ret;
 }
 
+int vlan_count_nics(VLANState *vlan)
+{
+    VLANClientState *vc;
+    int count = 0;
+
+    QTAILQ_FOREACH(vc, &vlan->clients, next) {
+        if (vc->info->type == NET_CLIENT_TYPE_NIC)
+            count++;
+    }
+
+    return count;
+}
+
 int vlan_set_hw_receive_filter(VLANState *vlan, int flags,
                                int count, uint8_t *buf)
 {

@@ -184,8 +184,10 @@ static void virtio_net_set_hw_rx_filter(VirtIONet *n)
     static const uint8_t bcast[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
     uint8_t *buf;
     int flags = 0;
+    VLANState *vlan = n->nic->nc.vlan;
 
-    if (n->promisc)
+    if (n->promisc || vlan_count_nics(vlan) > 1)
+        /* can't have several nics within the same tap */
         flags |= IFF_PROMISC;
     if (n->allmulti)
         flags |= IFF_ALLMULTI;
@@ -196,7 +198,7 @@ static void virtio_net_set_hw_rx_filter(VirtIONet *n)
     memcpy(&buf[ETH_ALEN*1], bcast, ETH_ALEN);
     memcpy(&buf[ETH_ALEN*2], n->mac_table.macs, n->mac_table.in_use * ETH_ALEN);
 
-    n->hw_mac_filter = vlan_set_hw_receive_filter(n->nic->nc.vlan, flags,
+    n->hw_mac_filter = vlan_set_hw_receive_filter(vlan, flags,
                                                   n->mac_table.in_use + 2, buf);
     qemu_free(buf);
 }
